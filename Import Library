@@ -1,0 +1,7 @@
+echo "# Reservoir-Contours-Map-for-Hydrocarbon-Distribution-Area" >> README.md
+git init
+git add README.md
+git commit -m "first commit"
+git branch -M main
+git remote add origin https://github.com/ilham-123bit/Reservoir-Contours-Map-for-Hydrocarbon-Distribution-Area.git
+git push -u origin main
