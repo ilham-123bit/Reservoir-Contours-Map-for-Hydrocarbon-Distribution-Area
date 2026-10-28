@@ -16,9 +16,11 @@ The grid-exit saddle is an algorithmic reference level for this finite synthetic
 
 ## Installation
 
-Use Python 3.10 or newer. Install the listed runtime, plotting, notebook and test dependencies from the repository root:
+From a fresh clone, open a terminal and run these commands. Use Python 3.10 or newer; the install command uses the repository’s declared runtime, plotting, notebook and test dependencies:
 
 ```powershell
+git clone https://github.com/ilham-123bit/Reservoir-Contours-Map-for-Hydrocarbon-Distribution-Area.git
+cd Reservoir-Contours-Map-for-Hydrocarbon-Distribution-Area
 python -m pip install -r requirements.txt
 ```
 
@@ -68,3 +70,4 @@ Grid coordinates are node locations. Each rectangle is split along a consistent 
 Smoothing can move or reduce highs. The raw-grid crest is retained for crest reporting; closure connectivity uses the raw-grid crest cell on the normalized smoothed surface; the grid-exit path starts at the maximum of that smoothed surface. Missing nodes are excluded from smoothing output and closure cells. Triangles touching any missing node are omitted from area integration, so substantial or clustered missingness can reduce the valid mesh and bias area. Edge-contact flags identify results limited by the model boundary.
 
 The synthetic surface contains a seeded elliptical high, a regional trend, seeded noise and a seeded null patch. Sensitivity experiments are illustrative: the resolution comparison uses a zero-noise model to isolate sampling, while the missing-data experiments use a fixed seed and vary the null fraction. These calculations are for software demonstration and learning only; they are not a validated geological interpretation, volumetric estimate or real asset evaluation.
+
