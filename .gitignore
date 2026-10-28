@@ -1,0 +1,20 @@
+# Local/private source grids (do not commit without authorization)
+data/input/*
+!data/input/.gitkeep
+
+# Generated examples are tracked only when intentionally added for review
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.env
+
+# Retain source audit material locally; keep it out of release commits
+/notebooks/cps_parser_original.ipynb
+/notebooks/cps_parser_documented.ipynb
+/src/01_process_all_reservoirs.py
+/src/02_i27_precise_closure.py
+/src/03_spill_depth_sensitivity.py
+/src/04_spill_depth_sensitivity_fine.py
+/src/05_contour_polygon_area_experiment.py
+/docs/code_review.md
+/data/input/.gitkeep
