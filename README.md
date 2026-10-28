@@ -2,8 +2,6 @@
 
 **Geoscience data analysis portfolio demonstration.** Every input, calculation, figure and reported result in this public demo uses the project’s fictional synthetic surface. Nothing represents a real reservoir, operator, field, prospect or project.
 
-**Branch note:** The implementation described below is currently on `feature/notebook-upload`. Switch to that branch to access the scripts, synthetic dataset, notebook, tests and generated outputs referenced here. This README update on `main` documents that work; it does not merge those files into `main`.
-
 ## What the workflow does
 
 1. Generate or load a regular x/y/depth grid and report grid spacing, missing-node coverage and usable mesh coverage.
@@ -11,10 +9,10 @@
 3. Interpret the largest numerical depth value as the shallowest structural crest. The example uses negative depth values in metres, so more negative values are deeper.
 4. Apply normalized Gaussian smoothing to valid nodes without filling null locations. Identify the 8-connected region at a selected spill-depth threshold that contains the raw-grid crest.
 5. Estimate area by clipping valid triangles in a fixed-diagonal, piecewise-linear mesh at the selected threshold. Report area in m² and km², relief, node counts, boundary contact and coverage.
-6. Calculate a domain-dependent digital grid-exit saddle using the maximum-bottleneck 8-neighbour path from the raw-grid crest location across the normalized smoothed grid to an edge node. The saddle elevation is read from that smoothed grid.
+6. Calculate a domain-dependent digital grid-exit saddle using the maximum-bottleneck 8-neighbour path from the smoothed-surface crest to an edge node. The saddle elevation is read from the normalized smoothed grid.
 7. Repeat the closure measurements over spill thresholds and controlled smoothing, missing-data and resolution scenarios. Export CSVs, figures and a concise report.
 
-The grid-exit saddle is an algorithmic reference level for this finite synthetic model; it is not a claim of a geologic spill point. The path starts at the raw-grid crest cell, while path elevations are evaluated on the normalized smoothed surface. A threshold region marked `boundary_limited` reaches the model edge and is not a fully enclosed closure. A structural high or closure-shaped contour is not evidence of hydrocarbons, seal, reservoir quality or an accumulation.
+The grid-exit saddle is an algorithmic reference level for this finite synthetic model; it is not a claim of a geologic spill point. The spill path starts at the maximum of the normalized smoothed surface, which may differ from the raw-grid crest used for closure connectivity and crest reporting. A threshold region marked `boundary_limited` reaches the model edge and is not a fully enclosed closure. A structural high or closure-shaped contour is not evidence of hydrocarbons, seal, reservoir quality or an accumulation.
 
 ## Installation
 
@@ -67,6 +65,6 @@ Open `notebooks/synthetic_contour_demo.ipynb` from the repository root in Jupyte
 
 Grid coordinates are node locations. Each rectangle is split along a consistent diagonal into two triangles; threshold-clipped triangle areas are summed only where all three depth nodes are valid. The resulting piecewise-linear area respects x/y cell dimensions and the mapped coordinate bounds. It is an approximation at the supplied grid resolution, not a polygonized geologic boundary. Node coverage and valid-triangle mesh coverage are reported separately.
 
-Smoothing can move or reduce highs. The raw-grid crest is retained for crest reporting; threshold connectivity and the digital grid-exit saddle use the normalized smoothed surface. Missing nodes are excluded from smoothing output and closure cells. Triangles touching any missing node are omitted from area integration, so substantial or clustered missingness can reduce the valid mesh and bias area. Edge-contact flags identify results limited by the model boundary.
+Smoothing can move or reduce highs. The raw-grid crest is retained for crest reporting; closure connectivity uses the raw-grid crest cell on the normalized smoothed surface; the grid-exit path starts at the maximum of that smoothed surface. Missing nodes are excluded from smoothing output and closure cells. Triangles touching any missing node are omitted from area integration, so substantial or clustered missingness can reduce the valid mesh and bias area. Edge-contact flags identify results limited by the model boundary.
 
 The synthetic surface contains a seeded elliptical high, a regional trend, seeded noise and a seeded null patch. Sensitivity experiments are illustrative: the resolution comparison uses a zero-noise model to isolate sampling, while the missing-data experiments use a fixed seed and vary the null fraction. These calculations are for software demonstration and learning only; they are not a validated geological interpretation, volumetric estimate or real asset evaluation.
