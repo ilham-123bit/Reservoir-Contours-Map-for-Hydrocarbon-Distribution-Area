@@ -15,8 +15,8 @@ def make_synthetic_grid(*, nx: int = 101, ny: int = 91, seed: int = 20261026,
     The fictional surface is a smooth elliptical structural high (a Gaussian
     dome) over a planar regional trend, plus small seeded Gaussian noise. A
     seeded circular patch is marked missing to demonstrate null handling.
-    Depth values are arbitrary synthetic units in metres and have no relation
-    to any real field or project.
+    Depth values are illustrative metre values with no relation to any real
+    field or project. Larger numerical values represent shallower structure.
     """
     if nx < 3 or ny < 3:
         raise ValueError("nx and ny must each be at least 3")
@@ -43,6 +43,7 @@ def make_synthetic_grid(*, nx: int = 101, ny: int = 91, seed: int = 20261026,
 
 
 def generate_csv(output: str | Path, **kwargs) -> Path:
+    """Write a reproducible CSV generated from the fictional surface model."""
     path = Path(output)
     path.parent.mkdir(parents=True, exist_ok=True)
     make_synthetic_grid(**kwargs).to_csv(path, index=False, float_format="%.6f")

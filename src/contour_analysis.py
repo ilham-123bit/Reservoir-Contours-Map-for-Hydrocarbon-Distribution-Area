@@ -38,7 +38,13 @@ def _validate_arrays(xs: np.ndarray, ys: np.ndarray, grid: np.ndarray) -> tuple[
 
 
 def load_grid(path: str | Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Load a complete, axis-aligned regular grid; NaN depth cells are allowed."""
+    """Load a complete regular grid; missing depths are allowed, missing coordinates are not.
+
+    The file must contain numeric ``x_m``, ``y_m`` and ``depth_m`` columns.
+    Coordinates must be finite, unique, axis-aligned and evenly spaced. The
+    function does not infer coordinate units or depth sign convention; callers
+    must supply metres and ensure larger depth values mean shallower structure.
+    """
     df = pd.read_csv(path)
     if not set(COLUMNS).issubset(df.columns):
         raise ValueError(f"CSV must contain columns: {', '.join(COLUMNS)}")
@@ -110,7 +116,7 @@ def _clipped_triangle_area(coords: np.ndarray, values: np.ndarray, threshold: fl
 
 def _mesh_areas(xs: np.ndarray, ys: np.ndarray, surface: np.ndarray, labels: np.ndarray,
                 component: int, threshold: float) -> tuple[float, float]:
-    """Integrate piecewise-linear triangles; omit any triangle touching a null node."""
+    """Integrate the smoothed surface over valid triangles in the selected component."""
     closure_area = valid_area = 0.0
     ny, nx = surface.shape
     for row in range(ny - 1):
@@ -121,7 +127,7 @@ def _mesh_areas(xs: np.ndarray, ys: np.ndarray, surface: np.ndarray, labels: np.
                                  surface[row + 1, col + 1], surface[row + 1, col]), dtype=float)
             comps = np.asarray((labels[row, col], labels[row, col + 1],
                                 labels[row + 1, col + 1], labels[row + 1, col]))
-            # Fixed diagonal from upper-left to lower-right; shared consistently across the grid.
+            # Fixed diagonal from lower-left to upper-right in increasing x/y coordinates.
             for indices in ((0, 1, 2), (0, 2, 3)):
                 tri_values = values[list(indices)]
                 if not np.isfinite(tri_values).all():
@@ -136,7 +142,7 @@ def _mesh_areas(xs: np.ndarray, ys: np.ndarray, surface: np.ndarray, labels: np.
 
 def _grid_spill(xs: np.ndarray, ys: np.ndarray, surface: np.ndarray,
                 crest: tuple[int, int]) -> dict[str, float | int | bool]:
-    """Find the grid-exit saddle as the maximum-bottleneck 8-neighbor path from crest to edge."""
+    """Find the grid-exit saddle from the supplied smoothed-surface maximum to an edge."""
     ny, nx = surface.shape
     start = crest
     capacity = np.full(surface.shape, -np.inf, dtype=float)
@@ -184,19 +190,24 @@ def _grid_spill(xs: np.ndarray, ys: np.ndarray, surface: np.ndarray,
 def analyze_grid(xs: np.ndarray, ys: np.ndarray, grid: np.ndarray, *, spill_depth_m: float,
                  smoothing_sigma: float | tuple[float, float] = 1.0,
                  min_area_km2: float = 0.0) -> dict:
-    """Analyze a selected spill threshold on a regular grid.
+    """Analyze a selected depth threshold on a regular grid.
 
-    Depth convention: larger numerical values are shallower. The crest is the
-    maximum of the unsmoothed valid grid. Threshold regions use normalized
-    Gaussian smoothing but retain the original null mask. The grid-exit spill
-    point is the lowest point along the maximum-bottleneck 8-neighbor route
-    from the maximum valid node of the normalized smoothed grid (which may
-    differ from the raw-grid crest) to any edge node. It is a domain-dependent
-    digital saddle, not an independently interpreted hydrocarbon contact.
+    ``spill_depth_m`` is the selected threshold for backward compatibility; it
+    is a scenario parameter, not a calculated grid-exit saddle. Depth convention:
+    larger numerical values are shallower. The raw-grid crest is the maximum of
+    the unsmoothed valid input. The normalized smoothed surface retains the
+    original null mask; its 8-connected threshold component at the raw-grid
+    crest location defines the selected region. Area is integrated from that
+    smoothed surface over fixed-diagonal, piecewise-linear triangles, excluding
+    triangles with any missing depth node. The grid-exit saddle is calculated
+    along the maximum-bottleneck 8-neighbour route from the smoothed-surface
+    maximum (which may differ from the raw-grid crest) to an edge node. It is a
+    domain-dependent digital result, not an independently interpreted
+    geological spill point or hydrocarbon contact.
     """
     xs, ys, grid, dx, dy = _validate_arrays(xs, ys, grid)
     if not np.isfinite(spill_depth_m):
-        raise ValueError("spill depth must be finite")
+        raise ValueError("selected depth threshold must be finite")
     if not np.isfinite(min_area_km2) or min_area_km2 < 0:
         raise ValueError("minimum area must be a nonnegative finite value")
     smooth = _normalized_smooth(grid, smoothing_sigma)
@@ -262,7 +273,7 @@ def write_outputs(result: dict, output_dir: str | Path, *, stem: str = "syntheti
     ax.contour(xs, ys, result["smoothed"], levels=levels, colors="black", linewidths=0.45)
     if result["has_closure"]:
         ax.contour(xs, ys, result["closure"].astype(float), levels=[0.5], colors="white", linewidths=1.4)
-    ax.scatter(result["crest_x_m"], result["crest_y_m"], marker="*", s=65, color="red", label="Synthetic crest")
+    ax.scatter(result["crest_x_m"], result["crest_y_m"], marker="*", s=65, color="red", label="Raw-grid crest")
     ax.set(title="Fictional synthetic structural surface", xlabel="Synthetic x (m)", ylabel="Synthetic y (m)")
     ax.set_aspect("equal")
     ax.legend(loc="best")
@@ -270,6 +281,7 @@ def write_outputs(result: dict, output_dir: str | Path, *, stem: str = "syntheti
     map_path = out / f"{stem}_contours.png"
     fig.savefig(map_path, dpi=160)
     plt.close(fig)
+    # Legacy schema: ``spill_depth_m`` stores the selected threshold, not the grid-exit saddle.
     legacy_metrics = {"crest_x_m": result["crest_x_m"], "crest_y_m": result["crest_y_m"],
                       "crest_depth_m": result["crest_depth_m"], "spill_depth_m": result["spill_threshold_m"],
                       "relief_m": result["relief_m"], "closure_area_km2": result["closure_area_km2"],
@@ -281,8 +293,10 @@ def write_outputs(result: dict, output_dir: str | Path, *, stem: str = "syntheti
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, required=True, help="synthetic or authorized CSV with x_m,y_m,depth_m columns")
-    parser.add_argument("--spill-depth-m", type=float, required=True, help="selected threshold; larger values are shallower")
+    parser.add_argument("--input", type=Path, required=True,
+                        help="CSV with x_m, y_m and depth_m columns that meets the documented grid requirements")
+    parser.add_argument("--spill-depth-m", type=float, required=True,
+                        help="selected depth threshold (scenario parameter; larger values are shallower)")
     parser.add_argument("--output-dir", type=Path, default=Path("examples/output"))
     parser.add_argument("--contour-step-m", type=float, default=20.0)
     parser.add_argument("--smoothing-sigma", type=float, default=1.0)
@@ -293,7 +307,7 @@ def main() -> None:
                           smoothing_sigma=args.smoothing_sigma, min_area_km2=args.min_area_km2)
     map_path, table_path = write_outputs(result, args.output_dir, stem=args.input.stem,
                                          contour_step_m=args.contour_step_m)
-    print(f"Synthetic or user-supplied grid analyzed: {args.input}")
+    print(f"Grid analysis complete: {args.input}")
     print(f"Map: {map_path}\nMetrics: {table_path}")
 
 

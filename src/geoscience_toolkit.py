@@ -38,7 +38,11 @@ def sensitivity_analysis(xs: np.ndarray, ys: np.ndarray, grid: np.ndarray, *,
                          thresholds_m: list[float] | np.ndarray | None = None,
                          smoothing_sigma: float | tuple[float, float] = 1.0,
                          min_area_km2: float = 0.0) -> pd.DataFrame:
-    """Calculate closure metrics across thresholds; higher values are shallower."""
+    """Calculate geometric metrics across selected depth thresholds.
+
+    ``thresholds_m`` retains its public name for compatibility. Larger values
+    are shallower under the required input convention.
+    """
     reference = analyze_grid(xs, ys, grid, spill_depth_m=float(np.nanmax(grid) - 60.0),
                              smoothing_sigma=smoothing_sigma, min_area_km2=min_area_km2)
     if thresholds_m is None:
@@ -49,7 +53,7 @@ def sensitivity_analysis(xs: np.ndarray, ys: np.ndarray, grid: np.ndarray, *,
         thresholds_m = np.linspace(top, bottom, 8)
     values = np.asarray(thresholds_m, dtype=float)
     if values.ndim != 1 or len(values) < 2 or not np.isfinite(values).all():
-        raise ValueError("sensitivity analysis requires at least two finite spill-depth thresholds")
+        raise ValueError("sensitivity analysis requires at least two finite selected depth thresholds")
     rows = []
     for threshold in values:
         result = analyze_grid(xs, ys, grid, spill_depth_m=float(threshold),
@@ -127,7 +131,7 @@ def plot_structural_map(result: dict, path: str | Path, *, contour_step_m: float
         labels.append("Selected threshold contour")
     if result["has_closure"]:
         handles.append(Line2D([0], [0], color="#e63946", linewidth=2.0))
-        labels.append("Crest-connected boundary")
+        labels.append("Crest-connected threshold-region boundary")
     ax.set(title=f"Synthetic structural contours — {result['closure_status'].replace('_', ' ')}",
            xlabel="Synthetic x (m)", ylabel="Synthetic y (m)")
     ax.set_aspect("equal")
@@ -149,9 +153,10 @@ def plot_surface_3d(result: dict, path: str | Path) -> Path:
     ax.scatter(result["crest_x_m"], result["crest_y_m"], result["crest_depth_m"],
                color="#ffcf33", edgecolor="black", marker="*", s=100, label="Synthetic crest")
     ax.set(title="Synthetic structural surface (3D)", xlabel="x (m)", ylabel="y (m)",
-           zlabel="Depth (m; more negative is deeper)")
+           zlabel="Depth (m; larger values are shallower)")
     ax.legend(loc="best")
-    fig.colorbar(surface, ax=ax, shrink=0.62, pad=0.12, label="Synthetic depth (m)")
+    fig.colorbar(surface, ax=ax, shrink=0.62, pad=0.12,
+                 label="Synthetic depth (m; larger values are shallower)")
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=220)
@@ -166,11 +171,11 @@ def plot_cross_sections(result: dict, path: str | Path) -> Path:
     smoothed = result["smoothed"]
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.7), constrained_layout=True)
     axes[0].plot(xs, raw[row, :], color="#4267ac", marker=".", label="Input grid")
-    axes[0].plot(xs, smoothed[row, :], color="#d34a42", label="Normalized Gaussian smooth")
+    axes[0].plot(xs, smoothed[row, :], color="#d34a42", label="Normalized Gaussian-smoothed surface")
     axes[0].axhline(result["spill_threshold_m"], color="black", linestyle="--", label="Selected threshold")
     axes[0].set(title=f"E–W section at y = {ys[row]:g} m", xlabel="x (m)", ylabel="Depth (m; larger is shallower)")
     axes[1].plot(ys, raw[:, col], color="#4267ac", marker=".", label="Input grid")
-    axes[1].plot(ys, smoothed[:, col], color="#d34a42", label="Normalized Gaussian smooth")
+    axes[1].plot(ys, smoothed[:, col], color="#d34a42", label="Normalized Gaussian-smoothed surface")
     axes[1].axhline(result["spill_threshold_m"], color="black", linestyle="--", label="Selected threshold")
     axes[1].set(title=f"N–S section at x = {xs[col]:g} m", xlabel="y (m)", ylabel="Depth (m; larger is shallower)")
     for ax in axes:
@@ -194,15 +199,15 @@ def plot_sensitivity(sensitivity: pd.DataFrame, output_dir: str | Path,
                                                 out / "closure_scenarios.png")
     fig, ax = plt.subplots(figsize=(8, 5), constrained_layout=True)
     ax.plot(ordered.spill_depth_threshold_m, ordered.closure_area_km2, marker="o", color="#2878a5")
-    ax.set(title="Closure area sensitivity", xlabel="Selected spill-depth threshold (m; larger is shallower)",
-           ylabel="Triangulated closure area (km²)")
+    ax.set(title="Closure area sensitivity", xlabel="Selected depth threshold (m; larger is shallower)",
+           ylabel="Estimated closure area (km²)")
     ax.grid(alpha=0.25)
     fig.savefig(area_path, dpi=220)
     plt.close(fig)
     fig, ax = plt.subplots(figsize=(8, 5), constrained_layout=True)
     ax.plot(ordered.spill_depth_threshold_m, ordered.relief_m, marker="o", color="#bc5b45")
-    ax.set(title="Structural relief sensitivity", xlabel="Selected spill-depth threshold (m; larger is shallower)",
-           ylabel="Relief from raw-grid crest (m)")
+    ax.set(title="Structural relief sensitivity", xlabel="Selected depth threshold (m; larger is shallower)",
+           ylabel="Raw-crest relief (m)")
     ax.grid(alpha=0.25)
     fig.savefig(relief_path, dpi=220)
     plt.close(fig)
@@ -227,7 +232,7 @@ def plot_sensitivity(sensitivity: pd.DataFrame, output_dir: str | Path,
         ax.set(title=f"Threshold {row.spill_depth_threshold_m:.1f} m\nArea {row.closure_area_km2:.2f} km²; {row.closure_status}",
                xlabel="x (m)", ylabel="y (m)")
         ax.set_aspect("equal")
-    fig.suptitle("Crest-connected closure-region comparison")
+    fig.suptitle("Selected-threshold region comparison")
     fig.savefig(scenarios_path, dpi=220)
     plt.close(fig)
     return area_path, relief_path, scenarios_path
@@ -238,7 +243,7 @@ def plot_robustness(robustness: pd.DataFrame, path: str | Path) -> Path:
         subset = robustness[robustness.experiment == group_name]
         ax.plot(np.arange(len(subset)), subset.closure_area_km2, marker="o", color="#347c74")
         ax.set_xticks(np.arange(len(subset)), subset.scenario, rotation=20, ha="right")
-        ax.set(title=group_name.replace("_", " ").title(), ylabel="Closure area (km²)")
+        ax.set(title=group_name.replace("_", " ").capitalize(), ylabel="Estimated closure area (km²)")
         ax.grid(alpha=0.2)
     fig.suptitle("Controlled synthetic robustness experiments")
     path = Path(path)
@@ -250,13 +255,18 @@ def plot_robustness(robustness: pd.DataFrame, path: str | Path) -> Path:
 
 def write_report(metrics: dict, sensitivity: pd.DataFrame, robustness: pd.DataFrame,
                  out_dir: str | Path, input_path: str | Path) -> Path:
+    smoothed_row, smoothed_col = np.unravel_index(
+        np.nanargmax(metrics["smoothed"]), metrics["smoothed"].shape)
+    smoothed_x = float(metrics["xs"][smoothed_col])
+    smoothed_y = float(metrics["ys"][smoothed_row])
+    smoothed_depth = float(metrics["smoothed"][smoothed_row, smoothed_col])
     out = Path(out_dir)
     closed = sensitivity[sensitivity.closure_status == "closed"]
     areas = (f"{closed.closure_area_km2.min():.3f}–{closed.closure_area_km2.max():.3f} km²"
              if not closed.empty else "no closed region in the tested thresholds")
     robust_groups = []
     for name, subset in robustness.groupby("experiment", sort=False):
-        robust_groups.append(f"- {name.replace('_', ' ').title()}: closure area ranges "
+        robust_groups.append(f"- {name.replace('_', ' ').capitalize()}: estimated closure area ranges "
                              f"{subset.closure_area_km2.min():.3f}–{subset.closure_area_km2.max():.3f} km² "
                              f"across the tested scenarios.")
     if robustness.empty:
@@ -265,9 +275,9 @@ def write_report(metrics: dict, sensitivity: pd.DataFrame, robustness: pd.DataFr
         robustness_machine_output = ""
     else:
         robustness_summary = (f"{chr(10).join(robust_groups)} The resolution experiment uses a zero-noise surface to isolate sampling. "
-                              "Missingness and smoothing experiments use fixed seeds; missing-data coverage changes because triangles "
-                              "touching null nodes are not integrated. See `robustness_scenarios.csv` and `robustness_comparison.png`.")
-        robustness_output = "- `robustness_comparison.png`: closure-area comparison across the controlled experiments.\n"
+                              "Missing-data and smoothing experiments use fixed seeds; valid-mesh coverage can change because triangles "
+                              "touching missing depth nodes are excluded. See `robustness_scenarios.csv` and `robustness_comparison.png`.")
+        robustness_output = "- `robustness_comparison.png`: estimated closure-area comparison across the controlled experiments.\n"
         robustness_machine_output = ", `robustness_scenarios.csv`"
     text = f"""# Synthetic structural-contour analysis report
 
@@ -275,15 +285,19 @@ def write_report(metrics: dict, sensitivity: pd.DataFrame, robustness: pd.DataFr
 
 Input: `{Path(input_path).as_posix()}`. This is a fictional synthetic depth surface generated by this project. The grid has {metrics['grid_nx']} x-nodes by {metrics['grid_ny']} y-nodes, spacing {metrics['grid_spacing_x_m']:.3f} m (x) and {metrics['grid_spacing_y_m']:.3f} m (y), {metrics['valid_data_coverage_pct']:.2f}% valid nodes, and {metrics['valid_mesh_coverage_pct']:.2f}% triangulated mesh coverage. Missing depth nodes remain excluded from contour regions; mesh triangles with any missing vertex are omitted.
 
-## Structural interpretation at the selected threshold
+## Synthetic geometric results at the selected threshold
 
-The depth convention is larger numerical value = shallower structure (the synthetic depths are negative metres). The raw-grid crest is at ({metrics['crest_x_m']:.1f}, {metrics['crest_y_m']:.1f}) m with depth {metrics['crest_depth_m']:.3f} m. The selected threshold is {metrics['spill_threshold_m']:.3f} m, giving raw-crest relief {metrics['relief_m']:.3f} m. The computed region area is {metrics['closure_area_m2']:.1f} m² ({metrics['closure_area_km2']:.6f} km²); status: **{metrics['closure_status']}**.
+The analysis assumes larger numerical depth values are shallower. The synthetic input happens to use negative metre values; negative values are not required for other supported inputs. The raw-grid crest, the maximum valid value in the unsmoothed input, is at ({metrics['crest_x_m']:.1f}, {metrics['crest_y_m']:.1f}) m with depth {metrics['crest_depth_m']:.3f} m.
 
-The reported grid-exit saddle is ({metrics['spill_x_m']:.1f}, {metrics['spill_y_m']:.1f}) m at smoothed depth {metrics['grid_spill_depth_m']:.3f} m. It is the bottleneck node on the maximum-bottleneck 8-neighbor route from the maximum of the normalized smoothed surface to the model-domain edge. This smoothed crest may differ from the raw-grid crest reported above and used to identify the threshold closure component. The saddle is domain dependent and is not an independently interpreted geologic spill point. The selected threshold contour and grid-exit saddle are distinct quantities.
+The selected depth threshold is {metrics['spill_threshold_m']:.3f} m. It is a scenario parameter used to identify the 8-connected threshold region on the normalized smoothed surface at the raw-grid crest location; it is not necessarily a geologically interpreted spill point. Raw-crest relief is the arithmetic difference between the raw-grid crest depth and the selected threshold ({metrics['relief_m']:.3f} m).
+
+The smoothed-surface maximum is at ({smoothed_x:.1f}, {smoothed_y:.1f}) m with depth {smoothed_depth:.3f} m. It may differ from the raw-grid crest and is the starting node for the grid-exit saddle calculation. The grid-exit saddle is at ({metrics['spill_x_m']:.1f}, {metrics['spill_y_m']:.1f}) m with smoothed depth {metrics['grid_spill_depth_m']:.3f} m. It is the bottleneck point along the maximum-bottleneck 8-neighbour path from the smoothed-surface maximum to the model-domain edge. This computed saddle is domain dependent; it is not an independently interpreted geological spill point or hydrocarbon contact. The selected threshold contour and grid-exit saddle are distinct quantities.
+
+Area is integrated over a piecewise-linear triangular mesh constructed from the normalized smoothed surface. Each triangle is clipped at the selected depth threshold, and clipped areas are summed only for valid triangles associated with the crest-connected threshold region. Triangles containing any missing depth node are excluded. The resulting area is an approximation based on grid resolution, smoothing, threshold choice and missing-data coverage, not a polygonized geological boundary. The computed area is {metrics['closure_area_m2']:.1f} m² ({metrics['closure_area_km2']:.6f} km²); geometric status: **{metrics['closure_status']}**.
 
 ## Threshold sensitivity
 
-Tested {len(sensitivity)} thresholds. Across scenarios classified as closed, area spans {areas}. Rows marked `boundary_limited` reach the model boundary and should not be interpreted as a fully enclosed closure. See `spill_sensitivity.csv`, `closure_area_sensitivity.png`, `structural_relief_sensitivity.png`, and `closure_scenarios.png`.
+Tested {len(sensitivity)} selected depth thresholds. Across scenarios classified as closed, estimated area spans {areas}. Rows marked `boundary_limited` reach the model boundary and do not represent fully enclosed regions. See `spill_sensitivity.csv`, `closure_area_sensitivity.png`, `structural_relief_sensitivity.png`, and `closure_scenarios.png`.
 
 ## Controlled robustness experiments
 
@@ -298,11 +312,11 @@ Tested {len(sensitivity)} thresholds. Across scenarios classified as closed, are
 - `closure_area_sensitivity.png`, `structural_relief_sensitivity.png`: threshold response.
 - `closure_scenarios.png`: selected threshold-contour comparison.
 - `metrics_summary.csv`, `spill_sensitivity.csv`{robustness_machine_output}: machine-readable results.
-{robustness_output}
+{robustness_output.rstrip()}
 
 ## Assumptions and limitations
 
-The surface is synthetic and has no real reservoir meaning. Crest depth is the maximum valid raw-grid value. Threshold regions use normalized Gaussian smoothing and 8-neighbor node connectivity. Area is integrated over a fixed-diagonal piecewise-linear triangular mesh by clipping each valid triangle at the selected threshold; it is an approximation to a continuous surface and is limited by grid resolution and missing cells. Boundary-touching regions are flagged. The digital grid-exit saddle depends on model extent, sampling and smoothing. Smoothing can shift or suppress local highs; the raw crest is retained for reporting. Neither a closure-shaped high nor any calculated metric proves hydrocarbon charge, seal, reservoir quality or accumulation.
+All values and figures in this report are synthetic. The raw-grid crest is the maximum valid input node; the smoothed-surface maximum is a separate point used to start the grid-exit saddle path. Threshold regions use the normalized smoothed surface and 8-neighbour connectivity while retaining the original missing-depth mask. Area is an approximation from fixed-diagonal, piecewise-linear triangles clipped at the selected threshold; triangles with missing depth nodes are excluded. Area depends on grid resolution, smoothing, threshold choice and missing-data coverage. Boundary-limited regions are not fully enclosed closures. The grid-exit saddle depends on model extent, sampling and smoothing. Neither a closure-shaped high nor any calculated metric establishes hydrocarbon charge, seal integrity, reservoir quality, accumulation, reserves or commercial viability.
 """
     path = out / "analysis_report.md"
     path.write_text(text, encoding="utf-8")
@@ -316,6 +330,11 @@ def run_analysis(input_path: str | Path, output_dir: str | Path, *,
                  min_area_km2: float = 0.0,
                  seed: int = 20261026,
                  include_robustness: bool = True) -> dict:
+    """Run the synthetic or a conforming user-supplied grid through the workflow.
+
+    ``spill_depth_m`` retains its public name for compatibility and supplies the
+    selected depth threshold; it is distinct from the calculated grid-exit saddle.
+    """
     xs, ys, grid = load_grid(input_path)
     raw_crest = float(np.nanmax(grid))
     selected_threshold = raw_crest - 60.0 if spill_depth_m is None else float(spill_depth_m)
@@ -358,12 +377,13 @@ def run_analysis(input_path: str | Path, output_dir: str | Path, *,
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, default=Path("data/synthetic/synthetic_surface.csv"))
+    parser.add_argument("--input", type=Path, default=Path("data/synthetic/synthetic_surface.csv"),
+                        help="synthetic CSV or user-supplied regular-grid CSV meeting the documented requirements")
     parser.add_argument("--output-dir", type=Path, default=Path("examples/output"))
     parser.add_argument("--spill-depth-m", type=float, default=None,
-                        help="selected threshold; defaults to 60 m below the raw crest")
+                        help="selected depth threshold (scenario parameter); defaults to 60 m below the raw-grid crest")
     parser.add_argument("--spill-depths-m", type=float, nargs="+", default=None,
-                        help="at least two thresholds for sensitivity; larger values are shallower")
+                        help="at least two selected depth thresholds for sensitivity; larger values are shallower")
     parser.add_argument("--smoothing-sigma", type=float, default=1.0,
                         help="Gaussian sigma in grid cells; normalized smoothing preserves null mask")
     parser.add_argument("--min-area-km2", type=float, default=0.0)
@@ -376,10 +396,10 @@ def main() -> None:
                            include_robustness=not args.skip_robustness)
     result = outputs["result"]
     print(f"Synthetic structural analysis: {result['closure_status']}")
-    print(f"Crest: ({result['crest_x_m']:.1f}, {result['crest_y_m']:.1f}) m at {result['crest_depth_m']:.3f} m")
-    print(f"Selected threshold: {result['spill_threshold_m']:.3f} m; relief: {result['relief_m']:.3f} m")
+    print(f"Raw-grid crest: ({result['crest_x_m']:.1f}, {result['crest_y_m']:.1f}) m at {result['crest_depth_m']:.3f} m")
+    print(f"Selected depth threshold: {result['spill_threshold_m']:.3f} m; raw-crest relief: {result['relief_m']:.3f} m")
     print(f"Grid-exit saddle: ({result['spill_x_m']:.1f}, {result['spill_y_m']:.1f}) m at {result['grid_spill_depth_m']:.3f} m")
-    print(f"Area: {result['closure_area_m2']:.1f} m2 ({result['closure_area_km2']:.6f} km2)")
+    print(f"Estimated closure area: {result['closure_area_m2']:.1f} m² ({result['closure_area_km2']:.6f} km²)")
     for name, path in outputs["files"].items():
         print(f"{name}: {path}")
     print(f"metrics: {outputs['metrics_path']}")

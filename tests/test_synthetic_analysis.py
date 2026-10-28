@@ -80,7 +80,7 @@ def test_grid_exit_saddle_and_closed_region_identification():
     assert result["closure_area_m2"] > 0
 
 
-def test_grid_exit_path_starts_at_smoothed_surface_crest(monkeypatch):
+def test_grid_exit_path_starts_at_smoothed_surface_maximum(monkeypatch):
     import contour_analysis
 
     xs = np.arange(7.0)
@@ -91,18 +91,18 @@ def test_grid_exit_path_starts_at_smoothed_surface_crest(monkeypatch):
     observed = {}
     original = contour_analysis._grid_spill
 
-    def capture_start(x_axis, y_axis, surface, crest):
-        observed["crest"] = crest
+    def capture_start(x_axis, y_axis, surface, start_node):
+        observed["start_node"] = start_node
         observed["surface"] = surface.copy()
-        return original(x_axis, y_axis, surface, crest)
+        return original(x_axis, y_axis, surface, start_node)
 
     monkeypatch.setattr(contour_analysis, "_grid_spill", capture_start)
     result = contour_analysis.analyze_grid(xs, ys, grid, spill_depth_m=-1.0, smoothing_sigma=1.0)
-    smoothed_crest = np.unravel_index(np.nanargmax(result["smoothed"]), result["smoothed"].shape)
+    smoothed_maximum = np.unravel_index(np.nanargmax(result["smoothed"]), result["smoothed"].shape)
     raw_crest = np.unravel_index(np.nanargmax(grid), grid.shape)
 
-    assert raw_crest != smoothed_crest
-    assert observed["crest"] == smoothed_crest
+    assert raw_crest != smoothed_maximum
+    assert observed["start_node"] == smoothed_maximum
     np.testing.assert_array_equal(observed["surface"], result["smoothed"])
 
 
@@ -156,6 +156,10 @@ def test_full_toolkit_writes_summary_sensitivity_and_visuals(tmp_path):
     assert not (output / "robustness_scenarios.csv").exists()
     assert not (output / "robustness_comparison.png").exists()
     report = (output / "analysis_report.md").read_text(encoding="utf-8")
+    assert "## Synthetic geometric results at the selected threshold" in report
+    assert "raw-grid crest" in report
+    assert "smoothed-surface maximum" in report
+    assert "grid-exit saddle" in report
     assert "Robustness analysis was skipped for this run" in report
     assert "robustness_scenarios.csv" not in report
     assert "robustness_comparison.png" not in report
@@ -174,6 +178,8 @@ def test_full_toolkit_reports_robustness_outputs_when_enabled(tmp_path):
     assert (output / "robustness_comparison.png").is_file()
     report = (output / "analysis_report.md").read_text(encoding="utf-8")
     assert "Robustness analysis was skipped" not in report
+    assert "- Missing data:" in report
+    assert "- Missing Data:" not in report
     assert "robustness_scenarios.csv" in report
     assert "robustness_comparison.png" in report
 
