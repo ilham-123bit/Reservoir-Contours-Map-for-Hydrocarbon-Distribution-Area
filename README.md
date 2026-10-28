@@ -9,10 +9,10 @@
 3. Interpret the largest numerical depth value as the shallowest structural crest. The example uses negative depth values in metres, so more negative values are deeper.
 4. Apply normalized Gaussian smoothing to valid nodes without filling null locations. Identify the 8-connected region at a selected spill-depth threshold that contains the raw-grid crest.
 5. Estimate area by clipping valid triangles in a fixed-diagonal, piecewise-linear mesh at the selected threshold. Report area in m² and km², relief, node counts, boundary contact and coverage.
-6. Calculate a domain-dependent digital grid-exit saddle using the maximum-bottleneck 8-neighbour path from the smoothed crest to the grid edge.
+6. Calculate a domain-dependent digital grid-exit saddle using the maximum-bottleneck 8-neighbour path from the raw-grid crest location across the normalized smoothed grid to an edge node. The saddle elevation is read from that smoothed grid.
 7. Repeat the closure measurements over spill thresholds and controlled smoothing, missing-data and resolution scenarios. Export CSVs, figures and a concise report.
 
-The grid-exit saddle is an algorithmic reference level for this finite synthetic model; it is not a claim of a geologic spill point. A threshold region marked `boundary_limited` reaches the model edge and is not a fully enclosed closure. A structural high or closure-shaped contour is not evidence of hydrocarbons, seal, reservoir quality or an accumulation.
+The grid-exit saddle is an algorithmic reference level for this finite synthetic model; it is not a claim of a geologic spill point. The path starts at the raw-grid crest cell, while path elevations are evaluated on the normalized smoothed surface. A threshold region marked `boundary_limited` reaches the model edge and is not a fully enclosed closure. A structural high or closure-shaped contour is not evidence of hydrocarbons, seal, reservoir quality or an accumulation.
 
 ## Installation
 
@@ -24,14 +24,14 @@ python -m pip install -r requirements.txt
 
 ## Reproduce the complete analysis
 
-The first command regenerates the deterministic 101 x 91 synthetic surface. The second writes the complete analysis to `examples/output/`:
+Run these commands from the repository root. The first regenerates the deterministic 101 x 91 synthetic surface using seed `20261026`; it writes only the synthetic CSV. The second loads and validates that grid, calculates the selected closure and threshold sweep, runs the fixed-seed robustness scenarios, then writes the report, tables and figures to `examples/output/`:
 
 ```powershell
 python src/generate_synthetic_data.py --output data/synthetic/synthetic_surface.csv --seed 20261026
 python src/geoscience_toolkit.py --input data/synthetic/synthetic_surface.csv --output-dir examples/output --spill-depths-m -2290 -2310 -2330 -2350 -2370 -2390
 ```
 
-Threshold values use the dataset’s depth convention: **larger values are shallower**. Omit `--spill-depths-m` to use a reproducible default sweep; omit `--spill-depth-m` to set the primary analysis threshold to 60 m below the raw crest. Use `--smoothing-sigma` to choose Gaussian sigma in grid cells, `--seed` for robustness scenarios, or `--skip-robustness` for a faster run. Run `python src/geoscience_toolkit.py --help` for options.
+Threshold values use the dataset’s depth convention: **larger values are shallower**. Omit `--spill-depths-m` to use a reproducible default sweep; omit `--spill-depth-m` to set the primary analysis threshold to 60 m below the raw crest. Use `--smoothing-sigma` to choose Gaussian sigma in grid cells, `--seed` for robustness scenarios, or `--skip-robustness` to omit the robustness experiment and its outputs for a faster run. Run `python src/geoscience_toolkit.py --help` for options.
 
 The original single-threshold command remains available for compatibility:
 
@@ -45,7 +45,7 @@ Run the automated tests with:
 python -m pytest -q
 ```
 
-Open `notebooks/synthetic_contour_demo.ipynb` from the repository root in JupyterLab for the guided workflow.
+Open `notebooks/synthetic_contour_demo.ipynb` from the repository root in JupyterLab for the guided workflow: inspect the data and quality checks, view the surface, quantify closure, compare spill thresholds, inspect cross-sections and 3D geometry, run robustness scenarios, and review the generated summary and limitations.
 
 ## Generated outputs
 
